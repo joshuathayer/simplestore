@@ -2,12 +2,10 @@ package SimpleStore::Disk;
 
 use strict;
 use Fcntl;
+use AnyEvent::AIO;
 use IO::AIO;
 use JSON;
 use Data::Dumper;
-use Devel::StackTrace;
-use AnyEvent;
-use Carp;
 
 # disk access stuff for the stores.
 our $sigdie;
@@ -36,23 +34,21 @@ sub open {
     my ($self, $cb) = @_;
 
     if ($self->{is_open}) { $cb->(); return; }
-    $sigdie = $SIG{__DIE__};
-    warn("sigdie $sigdie");
+
     aio_open $self->{path}, O_RDWR|O_CREAT, 0666, sub {
-        eval {
-            local $SIG{__DIE__} = $sigdie;
-            warn("sigdie $SIG{__DIE__}");
             my $fh = shift;
+
             if (defined($fh)) {
                 $self->{is_open} = 1;
                 $self->{fh} = $fh;
+                # this can eventually call aio_read, which can die. so it's important
+                # to have the original sigdie handler reinstalled
                 $cb->();
             } else {
-                warn("FILE FAILED TO OPEN");
-                die("failed to open file: $!\n");
+                croak("failed to open file: $!\n");
             }
-        };
     };
+
 }
 
 sub write {
@@ -68,7 +64,6 @@ sub write {
 
 sub read {
     my ($self, $cb) = @_;
-
     # aio_read seems to set its own sigdie in its callback
     # then (i think) it tries to flush a closed filehandle 
     # in its END block, which brings things down hard.
@@ -76,9 +71,12 @@ sub read {
     # it later, in a handler which closes the filehandle and then 
     # calls the sub we've put in $sigdie
     #$sigdie = $SIG{__DIE__};
+    # jt 20101021 no need to do this here, we do it in open()
+    # even if the file is already open
 
     my $data;
     $self->open(sub {
+        # ok, file is open
         my $size = -s $self->{fh};
         if ($size == 0) {
             $self->close(sub {
@@ -87,17 +85,15 @@ sub read {
             });
         }
 
+        # we hack up the sigdie handler for inside 
+        # the aio_read callback. see comment there.
         $csigdie = sub {
-            #delete $self->{fh};
-            warn("I AM HERE IN CSIGDIE");
+            warn("I AM HERE IN CSIGDIE: @_");
             warn("sigdie $SIG{__DIE__}");
-            die(@_);
-            #$self->close(sub{
-            #    warn("close callback calling die");
-            #    die($@);
-            #});
+            aio_close($self->{fh});
+            warn("called aio_close, calling die now");
+            #die("die called in hacked-up aio_read die handler");
         };
-
         aio_read($self->{fh}, 0, $size, $data, 0, $self->read_cb($data, $cb));
 
     });
@@ -108,25 +104,28 @@ sub read_cb {
 
 
     eval {
-            $SIG{__DIE__} = $sigdie;
-        # XXX local $SIG{__DIE__} = $csigdie;
         # this is somewhat nuanced
         # IO::AIO was complaining in its END block
         # which only does a call to flush. by closing
         # its filehandle before it gets to its END block,
         # things run better. i'm not 100% what's going on
-        #$SIG{__DIE__} = sub{
-        #    $self->close(sub{
-        #};
-        warn("i am in read_cb");
+
+        # when data is bad json, this die()s, as it shold
+        # but that's setting up all sorts of bad stuff
         $data = decode_json($data);
-        warn("i am in read_cb 2");
         my $otype = $data->{type};
         if ($otype ne $self->{type}) {
             die("opened type ($otype) does not match implied type ($self->{type})")
         }
+
     };
-    return if $@;
+
+    if ($@) {
+        print STDERR "i stumbled across an error.";
+        aio_close($self->{fh});
+        die($@);
+    }
+    
     $cb->($data->{data});
 };
 
