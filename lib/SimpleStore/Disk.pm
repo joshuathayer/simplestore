@@ -6,13 +6,17 @@ use AnyEvent::AIO;
 use IO::AIO;
 use JSON;
 use Data::Dumper;
+use Carp;
 
 # disk access stuff for the stores.
 our $sigdie;
 our $csigdie;
 
 sub new {
-    my ($class, $path) = @_;
+    my $class = shift;
+    my $path = shift;
+    my (%rest) = @_;
+
 
     die("must instantiate SimpleStore::Disk with a path") unless ($path);
     my @c = caller;
@@ -25,6 +29,10 @@ sub new {
     $self->{is_open} = 0;
     $self->{fh} = undef;
     $self->{type} = $type;
+    if ($rest{onerror}) {
+        warn("Disk installing onerror handler");
+        $self->{onerror} = $rest{onerror};
+    }
 
     return $self;
 
@@ -87,14 +95,16 @@ sub read {
 
         # we hack up the sigdie handler for inside 
         # the aio_read callback. see comment there.
-        $csigdie = sub {
-            warn("I AM HERE IN CSIGDIE: @_");
-            warn("sigdie $SIG{__DIE__}");
-            aio_close($self->{fh});
-            warn("called aio_close, calling die now");
-            #die("die called in hacked-up aio_read die handler");
-        };
-        aio_read($self->{fh}, 0, $size, $data, 0, $self->read_cb($data, $cb));
+        #$csigdie = sub {
+        #   warn("I AM HERE IN CSIGDIE: @_");
+        #   warn("sigdie $SIG{__DIE__}");
+        #   aio_close($self->{fh});
+        #    warn("called aio_close, calling die now");
+        #    #die("die called in hacked-up aio_read die handler");
+        #};
+
+        warn("trying to read $size bytes");
+        my $r = aio_read($self->{fh}, 0, $size, $data, 0, sub {  $self->read_cb($data, $cb) });
 
     });
 }
@@ -102,6 +112,7 @@ sub read {
 sub read_cb {
     my ($self, $data, $cb) = @_;
 
+    warn("data is $data");
 
     eval {
         # this is somewhat nuanced
@@ -109,6 +120,8 @@ sub read_cb {
         # which only does a call to flush. by closing
         # its filehandle before it gets to its END block,
         # things run better. i'm not 100% what's going on
+
+        local $SIG{__DIE__};
 
         # when data is bad json, this die()s, as it shold
         # but that's setting up all sorts of bad stuff
@@ -121,9 +134,14 @@ sub read_cb {
     };
 
     if ($@) {
-        print STDERR "i stumbled across an error.";
+        carp("i stumbled across an error");
         aio_close($self->{fh});
-        die($@);
+        if ($self->{onerror}) {
+            $self->{onerror}->($cb);
+            return;
+        } else {
+            croak($@);
+        }
     }
     
     $cb->($data->{data});
