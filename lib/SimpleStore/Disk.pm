@@ -89,28 +89,38 @@ sub read {
         if ($size == 0) {
             $self->close(sub {
                 $cb->(undef);
-                return;
             });
-        }
+        } else {
 
-        # we hack up the sigdie handler for inside 
-        # the aio_read callback. see comment there.
-        #$csigdie = sub {
-        #   warn("I AM HERE IN CSIGDIE: @_");
-        #   warn("sigdie $SIG{__DIE__}");
-        #   aio_close($self->{fh});
-        #    warn("called aio_close, calling die now");
-        #    #die("die called in hacked-up aio_read die handler");
-        #};
-
-        warn("trying to read $size bytes");
-        my $r = aio_read($self->{fh}, 0, $size, $data, 0, sub {  $self->read_cb($data, $cb) });
-
+	        # we hack up the sigdie handler for inside 
+	        # the aio_read callback. see comment there.
+	        #$csigdie = sub {
+	        #   warn("I AM HERE IN CSIGDIE: @_");
+	        #   warn("sigdie $SIG{__DIE__}");
+	        #   aio_close($self->{fh});
+	        #    warn("called aio_close, calling die now");
+	        #    #die("die called in hacked-up aio_read die handler");
+	        #};
+	
+	        warn("trying to read $size bytes");
+            if (not ($size)) {
+                warn("empty read");
+                $cb->(undef);
+                return;
+            }
+	        my $r = aio_read($self->{fh}, 0, $size, $data, 0, sub {  $self->read_cb($data, $cb) });
+        }	
     });
 }
             
 sub read_cb {
     my ($self, $data, $cb) = @_;
+
+    if (not ($data)) {
+        warn("no data read");
+        $cb->(undef);
+        return;
+    }
 
     warn("data is $data");
 
