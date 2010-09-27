@@ -1,5 +1,7 @@
 package SimpleStore::Disk;
 
+use constant DEBUG => 0;
+
 use strict;
 use Fcntl;
 use AnyEvent::AIO;
@@ -62,9 +64,12 @@ sub open {
 sub write {
     my ($self, $data, $cb) = @_;
 
+    warn("in write") if DEBUG;
+
     $self->open(sub {
         my $dat = encode_json({type=>$self->{type}, data=>$data});
         aio_write($self->{fh}, 0, undef, $dat, 0, sub {
+           warn("in write callback") if DEBUG;
            $self->close($cb);
        }); 
     });
