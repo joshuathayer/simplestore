@@ -109,7 +109,7 @@ sub read {
 	        #    #die("die called in hacked-up aio_read die handler");
 	        #};
 	
-	        warn("trying to read $size bytes");
+	        warn("trying to read $size bytes") if DEBUG;
             if (not ($size)) {
                 warn("empty read");
                 $cb->(undef);
@@ -128,8 +128,6 @@ sub read_cb {
         $cb->(undef);
         return;
     }
-
-    warn("data is $data");
 
     eval {
         # this is somewhat nuanced

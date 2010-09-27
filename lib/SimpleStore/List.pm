@@ -5,7 +5,7 @@ use strict;
 use SimpleStore::Disk;
 use Data::Dumper;
 
-use constant DEBUG => 1;
+use constant DEBUG => 0;
 
 our $INSTANCES = {};
 
