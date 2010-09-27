@@ -70,7 +70,9 @@ sub write {
         my $dat = encode_json({type=>$self->{type}, data=>$data});
         aio_write($self->{fh}, 0, undef, $dat, 0, sub {
            warn("in write callback") if DEBUG;
-           $self->close($cb);
+           aio_truncate($self->{fh}, length($dat), sub {
+               $self->close($cb);
+           });
        }); 
     });
 }

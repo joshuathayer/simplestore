@@ -5,7 +5,7 @@ use strict;
 use SimpleStore::Disk;
 use Data::Dumper;
 
-use constant DEBUG => 0;
+use constant DEBUG => 1;
 
 our $INSTANCES = {};
 
@@ -56,6 +56,17 @@ sub _read_and {
             $cb->();
         });
     }
+}
+
+sub replace {
+    my ($self, $with, $cb) = @_;
+    warn("in replace") if DEBUG;
+    warn(Dumper $with);
+    $self->_read_and(sub {
+        warn("in replace callback") if DEBUG;
+        $self->{items} = $with;
+        $self->{disk}->write($self->{items}, $cb);
+    });
 }
 
 sub clear {
