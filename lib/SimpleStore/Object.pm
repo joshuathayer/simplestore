@@ -40,5 +40,12 @@ sub set {
     $d->write($item, $cb);
 }
 
+sub delete {
+    my ($self, $name, $cb) = @_;
+
+    my $path = "$self->{path}/$name\.ss";
+    my $d = SimpleStore::Disk->new($path, onerror => $self->{onerror});
+    $d->unlink($cb);
+}
 
 1;

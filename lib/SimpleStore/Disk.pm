@@ -167,4 +167,11 @@ sub close {
     $self->{is_open} = undef;
     aio_close($self->{fh}, $cb);
 }
+
+sub unlink {
+    my ($self, $cb) = @_;
+    $self->{is_open} = undef;
+    aio_unlink($self->{path}, $cb);
+}
+
 1;
